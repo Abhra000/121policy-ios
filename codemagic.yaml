@@ -7,56 +7,66 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: List project structure
+      - name: Extract source code
         script: |
-          find . -name "*.xcworkspace" -o -name "*.xcodeproj" | head -20
+          tar -xzf ios_source.tar.gz
+          echo "Extracted contents:"
           ls -la
+          find . -name "*.xcworkspace" -o -name "*.xcodeproj" | grep -v xcodeproj/project | head -20
       - name: Install CocoaPods dependencies
         script: |
           PODFILE=$(find . -name "Podfile" | head -1)
           if [ -n "$PODFILE" ]; then
+            echo "Found Podfile at: $PODFILE"
             cd $(dirname $PODFILE)
             pod install --repo-update
+          else
+            echo "No Podfile found"
           fi
       - name: Build unsigned IPA
         script: |
           WORKSPACE=$(find . -name "*.xcworkspace" | grep -v xcodeproj | head -1)
-          SCHEME=$(find . -name "*.xcscheme" | head -1 | xargs basename | sed 's/.xcscheme//')
+          XCPROJ=$(find . -name "*.xcodeproj" | head -1)
+          SCHEME=$(find . -name "*.xcscheme" | head -1 | xargs basename 2>/dev/null | sed 's/.xcscheme//')
           echo "Workspace: $WORKSPACE"
+          echo "Project: $XCPROJ"
           echo "Scheme: $SCHEME"
-          if [ -z "$WORKSPACE" ]; then
-            PROJ=$(find . -name "*.xcodeproj" | head -1)
+          if [ -n "$WORKSPACE" ] && [ -n "$SCHEME" ]; then
             xcodebuild \
-              -project "$PROJ" \
+              -workspace "$WORKSPACE" \
               -scheme "$SCHEME" \
               -configuration Release \
-              -archivePath build/121policy.xcarchive \
+              -archivePath "$CM_BUILD_DIR/build/121policy.xcarchive" \
+              -destination "generic/platform=iOS" \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              archive
+          elif [ -n "$XCPROJ" ] && [ -n "$SCHEME" ]; then
+            xcodebuild \
+              -project "$XCPROJ" \
+              -scheme "$SCHEME" \
+              -configuration Release \
+              -archivePath "$CM_BUILD_DIR/build/121policy.xcarchive" \
               -destination "generic/platform=iOS" \
               CODE_SIGN_IDENTITY="" \
               CODE_SIGNING_REQUIRED=NO \
               CODE_SIGNING_ALLOWED=NO \
               archive
           else
-            xcodebuild \
-              -workspace "$WORKSPACE" \
-              -scheme "$SCHEME" \
-              -configuration Release \
-              -archivePath build/121policy.xcarchive \
-              -destination "generic/platform=iOS" \
-              CODE_SIGN_IDENTITY="" \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGNING_ALLOWED=NO \
-              archive
+            echo "Could not find workspace/project or scheme"
+            find . -name "*.xcscheme" | head -10
+            exit 1
           fi
       - name: Export IPA
         script: |
+          mkdir -p "$CM_BUILD_DIR/build/ipa"
           xcodebuild \
             -exportArchive \
-            -archivePath build/121policy.xcarchive \
-            -exportPath build/ipa \
+            -archivePath "$CM_BUILD_DIR/build/121policy.xcarchive" \
+            -exportPath "$CM_BUILD_DIR/build/ipa" \
             -exportOptionsPlist exportOptions.plist || true
-          find build -name "*.ipa" 2>/dev/null
+          find "$CM_BUILD_DIR/build" -name "*.ipa" 2>/dev/null
     artifacts:
-      - build/ipa/*.ipa
-      - build/**/*.xcarchive
-      - build/**/*.app
+      - $CM_BUILD_DIR/build/ipa/*.ipa
+      - $CM_BUILD_DIR/build/**/*.xcarchive
