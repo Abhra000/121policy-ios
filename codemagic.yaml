@@ -1,0 +1,33 @@
+workflows:
+  ios-unsigned:
+    name: iOS Unsigned IPA
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install dependencies
+        script: |
+          cd ios
+          pod install --repo-update || true
+      - name: Build unsigned IPA
+        script: |
+          xcodebuild \
+            -workspace ios/*.xcworkspace \
+            -scheme "121policy" \
+            -configuration Release \
+            -archivePath build/121policy.xcarchive \
+            -destination "generic/platform=iOS" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            archive
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/121policy.xcarchive \
+            -exportPath build/ipa \
+            -exportOptionsPlist exportOptions.plist
+    artifacts:
+      - build/ipa/*.ipa
+      - build/**/*.xcarchive
