@@ -7,27 +7,56 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Install dependencies
+      - name: List project structure
         script: |
-          cd ios
-          pod install --repo-update || true
+          find . -name "*.xcworkspace" -o -name "*.xcodeproj" | head -20
+          ls -la
+      - name: Install CocoaPods dependencies
+        script: |
+          PODFILE=$(find . -name "Podfile" | head -1)
+          if [ -n "$PODFILE" ]; then
+            cd $(dirname $PODFILE)
+            pod install --repo-update
+          fi
       - name: Build unsigned IPA
         script: |
-          xcodebuild \
-            -workspace ios/*.xcworkspace \
-            -scheme "121policy" \
-            -configuration Release \
-            -archivePath build/121policy.xcarchive \
-            -destination "generic/platform=iOS" \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            archive
+          WORKSPACE=$(find . -name "*.xcworkspace" | grep -v xcodeproj | head -1)
+          SCHEME=$(find . -name "*.xcscheme" | head -1 | xargs basename | sed 's/.xcscheme//')
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
+          if [ -z "$WORKSPACE" ]; then
+            PROJ=$(find . -name "*.xcodeproj" | head -1)
+            xcodebuild \
+              -project "$PROJ" \
+              -scheme "$SCHEME" \
+              -configuration Release \
+              -archivePath build/121policy.xcarchive \
+              -destination "generic/platform=iOS" \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              archive
+          else
+            xcodebuild \
+              -workspace "$WORKSPACE" \
+              -scheme "$SCHEME" \
+              -configuration Release \
+              -archivePath build/121policy.xcarchive \
+              -destination "generic/platform=iOS" \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGNING_ALLOWED=NO \
+              archive
+          fi
+      - name: Export IPA
+        script: |
           xcodebuild \
             -exportArchive \
             -archivePath build/121policy.xcarchive \
             -exportPath build/ipa \
-            -exportOptionsPlist exportOptions.plist
+            -exportOptionsPlist exportOptions.plist || true
+          find build -name "*.ipa" 2>/dev/null
     artifacts:
       - build/ipa/*.ipa
       - build/**/*.xcarchive
+      - build/**/*.app
